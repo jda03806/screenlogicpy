@@ -59,6 +59,9 @@ def create_login_message(
     )
     pid = 2
 
+    if (password is None) != (challenge is None):
+        raise ValueError("password and challenge must be provided together")
+
     if password is not None and challenge is not None:
         passwd = _encode_sl_array(_encrypt_password_first_block(password, challenge))
     else:

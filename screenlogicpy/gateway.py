@@ -130,9 +130,6 @@ class ScreenLogicGateway:
         remote: bool | None = None,
     ) -> bool:
         """Connect to the ScreenLogic protocol adapter"""
-        if self.is_connected:
-            return True
-
         self._ip = ip if ip is not None else self._ip
         self._port = port if port is not None else self._port
         self._type = gtype if gtype is not None else self._type
@@ -141,6 +138,9 @@ class ScreenLogicGateway:
         self._password = password if password is not None else self._password
         self._remote = remote if remote is not None else self._remote
         self._custom_connection_closed_callback = connection_closed_callback
+
+        if self.is_connected:
+            return True
 
         if not self._ip:
             raise ScreenLogicError(
