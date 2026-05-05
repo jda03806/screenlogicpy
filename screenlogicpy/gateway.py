@@ -127,7 +127,7 @@ class ScreenLogicGateway:
         name=None,
         connection_closed_callback: Callable = None,
         password: str | None = None,
-        remote: bool = False,
+        remote: bool | None = None,
     ) -> bool:
         """Connect to the ScreenLogic protocol adapter"""
         if self.is_connected:
