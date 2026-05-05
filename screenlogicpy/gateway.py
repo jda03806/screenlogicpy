@@ -124,6 +124,8 @@ class ScreenLogicGateway:
         gsubtype=None,
         name=None,
         connection_closed_callback: Callable = None,
+        password: str | None = None,
+        remote: bool = False,
     ) -> bool:
         """Connect to the ScreenLogic protocol adapter"""
         if self.is_connected:
@@ -147,6 +149,8 @@ class ScreenLogicGateway:
             self._port,
             self._common_connection_closed_callback,
             self._max_retries,
+            password=password,
+            remote=remote,
         )
         if connectPkg:
             self._transport, self._protocol, self._mac = connectPkg

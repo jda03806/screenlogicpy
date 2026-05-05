@@ -3,6 +3,8 @@ import logging
 import struct
 from typing import Callable
 
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 from ..const.common import ScreenLogicConnectionError
 from ..const.msg import CODE, COM_MAX_RETRIES, COM_TIMEOUT
 from .protocol import ScreenLogicProtocol
@@ -12,14 +14,57 @@ from .utility import asyncio_timeout, decodeMessageString, encodeMessageString
 _LOGGER = logging.getLogger(__name__)
 
 
-def create_login_message() -> bytes:
+def _slack_for_alignment(length: int) -> int:
+    """Return ScreenLogic padding for 4-byte alignment."""
+    return (4 - length % 4) % 4
+
+
+def _encode_sl_array(value: bytes) -> bytes:
+    """Encode a ScreenLogic byte array."""
+    return struct.pack("<i", len(value)) + value + (b"\x00" * _slack_for_alignment(len(value)))
+
+
+def _zero_pad_to_block(value: str) -> bytes:
+    """Zero-pad a string to an AES block boundary."""
+    raw = value.encode("latin-1")
+    blocks = ((len(raw) // 16) + (1 if len(raw) % 16 else 0)) * 16
+    if blocks == 0:
+        blocks = 16
+    return raw + (b"\x00" * (blocks - len(raw)))
+
+
+def _encrypt_password_first_block(password: str, challenge: str) -> bytes:
+    """Encrypt the remote password challenge.
+
+    ScreenLogic remote login matches node-screenlogic behavior:
+    AES-ECB with a zero-padded password key and zero-padded challenge plaintext,
+    with only the first encrypted block sent in the login message.
+    """
+    key = _zero_pad_to_block(password)
+    plaintext = _zero_pad_to_block(challenge)
+
+    encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
+    encrypted = encryptor.update(plaintext) + encryptor.finalize()
+    return encrypted[:16]
+
+
+def create_login_message(
+    password: str | None = None, challenge: str | None = None
+) -> bytes:
     # these constants are only for this message.
     schema = 348
     connectionType = 0
-    clientVersion = encodeMessageString("Android")
+    clientVersion = encodeMessageString(
+        "node-screenlogic" if password is not None and challenge is not None else "Android"
+    )
     pid = 2
-    password = "0000000000000000"  # passwd must be <= 16 chars. empty is not OK.
-    passwd = encodeMessageString(password)
+
+    if password is not None and challenge is not None:
+        passwd = _encode_sl_array(_encrypt_password_first_block(password, challenge))
+    else:
+        local_password = "0000000000000000"  # passwd must be <= 16 chars. empty is not OK.
+        passwd = encodeMessageString(local_password)
+
     fmt = f"<II{len(clientVersion)}s{len(passwd)}sxI"
     return struct.pack(fmt, schema, connectionType, clientVersion, passwd, pid)
 
@@ -85,11 +130,19 @@ async def async_gateway_connect(
     )
 
 
-async def async_gateway_login(protocol: ScreenLogicProtocol, max_retries: int) -> bool:
+async def async_gateway_login(
+    protocol: ScreenLogicProtocol,
+    max_retries: int,
+    password: str | None = None,
+    challenge: str | None = None,
+) -> bool:
     _LOGGER.debug("Logging in")
     return (
         await async_make_request(
-            protocol, CODE.LOCALLOGIN_QUERY, create_login_message(), max_retries
+            protocol,
+            CODE.LOCALLOGIN_QUERY,
+            create_login_message(password, challenge),
+            max_retries,
         )
         is not None
     )
@@ -100,10 +153,18 @@ async def async_connect_to_gateway(
     gateway_port,
     connection_lost_callback: Callable = None,
     max_retries: int = COM_MAX_RETRIES,
-) -> tuple[asyncio.Transport, ScreenLogicProtocol, str]:
+    password: str | None = None,
+    remote: bool = False,
+) -> tuple[asyncio.Transport, ScreenLogicProtocol, str] | None:
     transport, protocol = await async_create_connection(
         gateway_ip, gateway_port, connection_lost_callback
     )
     mac_address = await async_gateway_connect(transport, protocol, max_retries)
-    if await async_gateway_login(protocol, max_retries):
+    challenge = mac_address if remote else None
+
+    if await async_gateway_login(protocol, max_retries, password, challenge):
         return transport, protocol, mac_address
+
+    if transport and not transport.is_closing():
+        transport.close()
+    return None

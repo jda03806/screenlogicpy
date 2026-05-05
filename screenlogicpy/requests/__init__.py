@@ -14,3 +14,5 @@ from .pump import async_request_pump_status
 from .status import async_request_pool_status
 from .scg import async_request_scg_config, async_request_set_scg_config
 from .request import async_make_request
+
+from .remote import RemoteGatewayInfo, async_resolve_remote_gateway
