@@ -52,6 +52,8 @@ class ScreenLogicGateway:
         self._type = 0
         self._subtype = 0
         self._name = "Unnamed-Screenlogic-Gateway"
+        self._password = None
+        self._remote = False
         self._mac = ""
         self._version = ""
         self._transport: asyncio.Transport = None
@@ -136,6 +138,8 @@ class ScreenLogicGateway:
         self._type = gtype if gtype is not None else self._type
         self._subtype = gsubtype if gsubtype is not None else self._subtype
         self._name = name if name is not None else self._name
+        self._password = password if password is not None else self._password
+        self._remote = remote if remote is not None else self._remote
         self._custom_connection_closed_callback = connection_closed_callback
 
         if not self._ip:
@@ -149,8 +153,8 @@ class ScreenLogicGateway:
             self._port,
             self._common_connection_closed_callback,
             self._max_retries,
-            password=password,
-            remote=remote,
+            password=self._password,
+            remote=self._remote,
         )
         if connectPkg:
             self._transport, self._protocol, self._mac = connectPkg
