@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import struct
 
 from ..const.common import ScreenLogicConnectionError
+from ..const.msg import HEADER_FORMAT, HEADER_LENGTH
+from .utility import encodeMessageString, getString, makeMessage
 
 
 DISPATCHER_HOST = "screenlogicserver.pentair.com"
@@ -28,41 +30,11 @@ class RemoteGatewayInfo:
     relay_on: bool
 
 
-def _slack_for_alignment(length: int) -> int:
-    """Return ScreenLogic padding for 4-byte alignment."""
-    return (4 - length % 4) % 4
-
-
-def _sl_string(value: str) -> bytes:
-    """Encode a ScreenLogic string."""
-    data = value.encode("latin-1")
-    return struct.pack("<i", len(data)) + data + (b"\x00" * _slack_for_alignment(len(data)))
-
-
-def _read_sl_string(payload: bytes, offset: int) -> tuple[str, int]:
-    """Decode a ScreenLogic string from payload at offset."""
-    (length,) = struct.unpack_from("<i", payload, offset)
-    offset += 4
-    value = payload[offset : offset + length].decode("latin-1")
-    offset += length + _slack_for_alignment(length)
-    return value, offset
-
-
-def _make_message(action: int, payload: bytes = b"", sender_id: int = 0) -> bytes:
-    """Create a ScreenLogic protocol message."""
-    return struct.pack("<HHi", sender_id, action, len(payload)) + payload
-
-
-async def _read_exact(reader: asyncio.StreamReader, length: int) -> bytes:
-    """Read exactly length bytes."""
-    return await reader.readexactly(length)
-
-
 async def _read_message(reader: asyncio.StreamReader) -> tuple[int, int, bytes]:
     """Read one ScreenLogic protocol message."""
-    header = await _read_exact(reader, 8)
-    sender_id, action, payload_len = struct.unpack("<HHi", header)
-    payload = await _read_exact(reader, payload_len) if payload_len else b""
+    header = await reader.readexactly(HEADER_LENGTH)
+    sender_id, action, payload_len = struct.unpack_from(HEADER_FORMAT, header)
+    payload = await reader.readexactly(payload_len) if payload_len else b""
     return sender_id, action, payload
 
 
@@ -79,8 +51,8 @@ async def async_resolve_remote_gateway(system_name: str) -> RemoteGatewayInfo:
         ) from ex
 
     try:
-        payload = _sl_string(system_name) + _sl_string(system_name)
-        writer.write(_make_message(ACTION_GATEWAY_REQUEST, payload))
+        payload = encodeMessageString(system_name) + encodeMessageString(system_name)
+        writer.write(makeMessage(0, ACTION_GATEWAY_REQUEST, payload))
         await writer.drain()
 
         _sender_id, action, response = await _read_message(reader)
@@ -94,7 +66,7 @@ async def async_resolve_remote_gateway(system_name: str) -> RemoteGatewayInfo:
         offset += 1
         license_ok = response[offset] != 0
         offset += 1
-        ip_addr, offset = _read_sl_string(response, offset)
+        ip_addr, offset = getString(response, offset)
         (port,) = struct.unpack_from("<H", response, offset)
         offset += 2
         port_open = response[offset] != 0

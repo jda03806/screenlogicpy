@@ -14,14 +14,10 @@ from .utility import asyncio_timeout, decodeMessageString, encodeMessageString
 _LOGGER = logging.getLogger(__name__)
 
 
-def _slack_for_alignment(length: int) -> int:
-    """Return ScreenLogic padding for 4-byte alignment."""
-    return (4 - length % 4) % 4
-
-
 def _encode_sl_array(value: bytes) -> bytes:
-    """Encode a ScreenLogic byte array."""
-    return struct.pack("<i", len(value)) + value + (b"\x00" * _slack_for_alignment(len(value)))
+    """Encode a ScreenLogic byte array with 4-byte alignment padding."""
+    pad = (4 - len(value) % 4) % 4
+    return struct.pack("<i", len(value)) + value + (b"\x00" * pad)
 
 
 def _zero_pad_to_block(value: str) -> bytes:
