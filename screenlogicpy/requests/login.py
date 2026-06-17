@@ -15,7 +15,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _encode_sl_array(value: bytes) -> bytes:
-    """Encode a ScreenLogic byte array with 4-byte alignment padding."""
+    """Encode a ScreenLogic byte array with a length prefix and 4-byte alignment padding.
+
+    Similar to encodeMessageString in utility.py, but operates on raw bytes rather
+    than a string, so it is used for the encrypted password block in remote login.
+    """
     pad = (4 - len(value) % 4) % 4
     return struct.pack("<i", len(value)) + value + (b"\x00" * pad)
 
@@ -50,6 +54,9 @@ def create_login_message(
     # these constants are only for this message.
     schema = 348
     connectionType = 0
+    # The remote gateway uses the clientVersion string to select its auth path.
+    # "node-screenlogic" triggers challenge/response authentication; "Android"
+    # triggers the legacy local login flow with a fixed dummy password.
     clientVersion = encodeMessageString(
         "node-screenlogic" if password is not None and challenge is not None else "Android"
     )

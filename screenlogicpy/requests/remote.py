@@ -14,6 +14,8 @@ from .utility import encodeMessageString, getString, makeMessage
 DISPATCHER_HOST = "screenlogicserver.pentair.com"
 DISPATCHER_PORT = 500
 
+# Action codes for the Pentair remote dispatcher protocol.
+# These are fixed values defined by the ScreenLogic protocol.
 ACTION_GATEWAY_REQUEST = 18003
 ACTION_GATEWAY_RESPONSE = 18004
 
@@ -31,7 +33,12 @@ class RemoteGatewayInfo:
 
 
 async def _read_message(reader: asyncio.StreamReader) -> tuple[int, int, bytes]:
-    """Read one ScreenLogic protocol message."""
+    """Read one ScreenLogic protocol message from a raw stream.
+
+    The remote dispatcher is contacted via a plain asyncio TCP connection
+    rather than through ScreenLogicProtocol, so we read the wire format
+    directly here instead of going through the normal request machinery.
+    """
     header = await reader.readexactly(HEADER_LENGTH)
     sender_id, action, payload_len = struct.unpack_from(HEADER_FORMAT, header)
     payload = await reader.readexactly(payload_len) if payload_len else b""
@@ -51,6 +58,8 @@ async def async_resolve_remote_gateway(system_name: str) -> RemoteGatewayInfo:
         ) from ex
 
     try:
+        # The dispatcher request payload contains the system name twice:
+        # once as the gatewayType field and once as the gatewayName field.
         payload = encodeMessageString(system_name) + encodeMessageString(system_name)
         writer.write(makeMessage(0, ACTION_GATEWAY_REQUEST, payload))
         await writer.drain()
@@ -61,6 +70,13 @@ async def async_resolve_remote_gateway(system_name: str) -> RemoteGatewayInfo:
                 f"Unexpected remote dispatcher response action {action}"
             )
 
+        # Dispatcher response wire layout:
+        #   1 byte  - gateway_found (bool)
+        #   1 byte  - license_ok (bool)
+        #   string  - ip_addr (ScreenLogic length-prefixed, 4-byte aligned)
+        #   2 bytes - port (uint16, little-endian)
+        #   1 byte  - port_open (bool)
+        #   1 byte  - relay_on (bool)
         offset = 0
         gateway_found = response[offset] != 0
         offset += 1
