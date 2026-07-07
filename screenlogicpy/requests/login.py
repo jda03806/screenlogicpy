@@ -9,19 +9,9 @@ from ..const.common import ScreenLogicConnectionError
 from ..const.msg import CODE, COM_MAX_RETRIES, COM_TIMEOUT
 from .protocol import ScreenLogicProtocol
 from .request import async_make_request
-from .utility import asyncio_timeout, decodeMessageString, encodeMessageString
+from .utility import asyncio_timeout, decodeMessageString, encodeMessageBytes, encodeMessageString
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _encode_sl_array(value: bytes) -> bytes:
-    """Encode a ScreenLogic byte array with a length prefix and 4-byte alignment padding.
-
-    Similar to encodeMessageString in utility.py, but operates on raw bytes rather
-    than a string, so it is used for the encrypted password block in remote login.
-    """
-    pad = (4 - len(value) % 4) % 4
-    return struct.pack("<i", len(value)) + value + (b"\x00" * pad)
 
 
 def _zero_pad_to_block(value: str) -> bytes:
@@ -66,7 +56,7 @@ def create_login_message(
         raise ValueError("password and challenge must be provided together")
 
     if password is not None and challenge is not None:
-        passwd = _encode_sl_array(_encrypt_password_first_block(password, challenge))
+        passwd = encodeMessageBytes(_encrypt_password_first_block(password, challenge))
     else:
         local_password = "0000000000000000"  # passwd must be <= 16 chars. empty is not OK.
         passwd = encodeMessageString(local_password)

@@ -67,6 +67,19 @@ def encodeMessageString(string: str, utf_16: bool = False) -> bytes:
     return struct.pack(fmt, length, data)
 
 
+def encodeMessageBytes(data: bytes) -> bytes:
+    """Returns a ScreenLogic length-prefixed, 4-byte-aligned byte buffer.
+
+    Equivalent to encodeMessageString but operates on raw bytes rather than a
+    string. Used when the payload is already binary (e.g. an encrypted block).
+    """
+    length = len(data)
+    over = length % 4
+    pad = (4 - over) if over > 0 else 0  # pad to multiple of 4
+    fmt = f"<I{length + pad}s"
+    return struct.pack(fmt, length, data)
+
+
 def decodeMessageString(data) -> str:
     encoding = "utf-8"
     size = struct.unpack_from("<I", data, 0)[0]
